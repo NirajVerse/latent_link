@@ -24,7 +24,7 @@ def decode_from_integers(model, encoding_indices):
         )
         
         # 2. Reorder dimensions for PyTorch: [Batch, Channels, Height, Width]
-        quantized_tensors = quantized_tensors.permute(0, 3, 1, 2)
+       # quantized_tensors = quantized_tensors.permute(0, 3, 1, 2).contiguous()
         
         # 3. Decode back into an image tensor
         decoded_output = model.decode(quantized_tensors)
