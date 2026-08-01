@@ -1,0 +1,61 @@
+"""
+Handles reconstructing an image from a list of discrete integers.
+This represents the 'Phone/Receiver' side of our project.
+"""
+import torch
+import torchvision.transforms as T
+from PIL import Image
+import config
+from model_loader import get_vq_model
+
+def decode_from_integers(model, encoding_indices):
+    """Reconstructs the image from the integer codes using the Codebook."""
+    print("Decoding latent codes back into an image...")
+    
+    # Calculate the grid size (e.g., if we have 4096 integers, it's a 64x64 grid)
+    grid_dim = int(len(encoding_indices) ** 0.5)
+    
+    with torch.no_grad():
+        # 1. Look up the continuous vectors in the codebook using the indices
+        # We tell it to reshape back into the 2D grid [Batch, Height, Width, Channels]
+        quantized_tensors = model.quantize.get_codebook_entry(
+            encoding_indices, 
+            shape=(1, grid_dim, grid_dim, 3) # Note: Channels are last here
+        )
+        
+        # 2. Reorder dimensions for PyTorch: [Batch, Channels, Height, Width]
+        quantized_tensors = quantized_tensors.permute(0, 3, 1, 2)
+        
+        # 3. Decode back into an image tensor
+        decoded_output = model.decode(quantized_tensors)
+        reconstructed_tensor = decoded_output.sample
+        
+    return reconstructed_tensor
+
+def save_tensor_as_image(tensor, output_path):
+    """Converts the tensor back to a standard image and saves it."""
+    # Denormalize from [-1, 1] back to [0, 1]
+    tensor = (tensor / 2 + 0.5).clamp(0, 1)
+    
+    # Convert back to PIL Image
+    image = T.ToPILImage()(tensor.squeeze(0))
+    image.save(output_path)
+    print(f"Saved reconstructed image to {output_path}")
+
+if __name__ == "__main__":
+    # 1. Load Model
+    model = get_vq_model()
+    
+    # 2. Load the "transmitted" integers
+    print(f"Loading latent codes from {config.LATENT_DATA_PATH}...")
+    try:
+        latent_integers = torch.load(config.LATENT_DATA_PATH)
+    except FileNotFoundError:
+        print("Error: Could not find latent codes. Run encoder.py first!")
+        exit(1)
+        
+    # 3. Decode
+    reconstructed_tensor = decode_from_integers(model, latent_integers)
+    
+    # 4. Save output
+    save_tensor_as_image(reconstructed_tensor, config.OUTPUT_IMAGE_PATH)
