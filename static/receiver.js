@@ -6,6 +6,7 @@ const progressEl = document.getElementById("progress");
 const debugEl = document.getElementById("debug");
 const result = document.getElementById("result");
 const outImg = document.getElementById("outImg");
+const saveLink = document.getElementById("save");
 const againBtn = document.getElementById("again");
 
 const MAGIC = [0x4c, 0x4b, 0x51, 0x31];
@@ -124,8 +125,11 @@ async function finish() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ data: bytesToBase64(blob) }),
     });
+    if (!res.ok) throw new Error("decode status " + res.status);
     const data = await res.json();
-    outImg.src = "data:image/png;base64," + data.image;
+    const url = "data:image/png;base64," + data.image;
+    outImg.src = url;
+    saveLink.href = url;
     result.style.display = "flex";
     progressWrap.style.display = "none";
   } catch (e) {
