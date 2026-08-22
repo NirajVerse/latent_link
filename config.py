@@ -13,7 +13,7 @@ IMAGE_SIZE = 512  # We resize to 256x256 for a consistent latent grid
 
 # QR Transfer Settings
 QR_FPS = 3            # frames per second the sender cycles through QR codes
-QR_CHUNK_SIZE = 2800  # bytes per QR frame (safely under QR v40 / EC-level L)
+QR_CHUNK_SIZE = 1500  # bytes per QR frame (smaller = less dense, easier to scan)
 
 # File Paths
 INPUT_IMAGE_PATH = "forest.webp"

@@ -8,8 +8,8 @@ const result = document.getElementById("result");
 const outImg = document.getElementById("outImg");
 const againBtn = document.getElementById("again");
 
-const W = 640;
-const H = 480;
+let W = 640;
+let H = 480;
 const canvas = document.createElement("canvas");
 canvas.width = W;
 canvas.height = H;
@@ -138,11 +138,17 @@ async function startCamera() {
   }
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment" },
+      video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
       audio: false,
     });
     video.srcObject = stream;
     await video.play();
+    const vw = video.videoWidth || 1280;
+    const vh = video.videoHeight || 720;
+    W = Math.min(vw, 1280);
+    H = Math.round(vh * (W / vw));
+    canvas.width = W;
+    canvas.height = H;
     progressWrap.style.display = "flex";
     startBtn.disabled = true;
     scanning = true;
