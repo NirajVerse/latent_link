@@ -8,28 +8,23 @@ from PIL import Image
 import config
 from model_loader import get_vq_model
 
-def decode_from_integers(model, encoding_indices):
-    """Reconstructs the image from the integer codes using the Codebook."""
+def decode_from_integers(model, encoding_indices, grid_w, grid_h):
+    """Reconstructs the image from integer codes on a grid_w x grid_h latent grid."""
     print("Decoding latent codes back into an image...")
-    
-    # Calculate the grid size (e.g., if we have 4096 integers, it's a 64x64 grid)
-    grid_dim = int(len(encoding_indices) ** 0.5)
-    
+
     with torch.no_grad():
-        # 1. Look up the continuous vectors in the codebook using the indices
-        # We tell it to reshape back into the 2D grid [Batch, Height, Width, Channels]
+        # 1. Look up the continuous vectors in the codebook using the indices.
+        # get_codebook_entry views them as [B, H, W, C] and returns
+        # [B, C, H, W] ready for the decoder.
         quantized_tensors = model.quantize.get_codebook_entry(
-            encoding_indices, 
-            shape=(1, grid_dim, grid_dim, 3) # Note: Channels are last here
+            encoding_indices,
+            shape=(1, grid_h, grid_w, 3)  # this model's latent_channels = 3
         )
-        
-        # 2. Reorder dimensions for PyTorch: [Batch, Channels, Height, Width]
-       # quantized_tensors = quantized_tensors.permute(0, 3, 1, 2).contiguous()
-        
-        # 3. Decode back into an image tensor
+
+        # 2. Decode back into an image tensor
         decoded_output = model.decode(quantized_tensors)
         reconstructed_tensor = decoded_output.sample
-        
+
     return reconstructed_tensor
 
 def save_tensor_as_image(tensor, output_path):

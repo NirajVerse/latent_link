@@ -17,6 +17,7 @@ import torch
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from PIL import Image
 from pydantic import BaseModel
 from torchvision.transforms import ToPILImage
 
@@ -54,10 +55,13 @@ class ProgressRequest(BaseModel):
     index: int
 
 
-def tensor_to_png_base64(tensor):
-    """Denormalize a VQ-VAE output tensor and return it as base64 PNG."""
+def tensor_to_png_base64(tensor, size=None):
+    """Denormalize a VQ-VAE output tensor and return it as base64 PNG.
+    Optionally resizes back to the original (width, height)."""
     tensor = (tensor / 2 + 0.5).clamp(0, 1)
     image = ToPILImage()(tensor.squeeze(0))
+    if size is not None:
+        image = image.resize(size, Image.LANCZOS)
     buf = io.BytesIO()
     image.save(buf, format="PNG")
     return base64.b64encode(buf.getvalue()).decode("ascii")
@@ -73,15 +77,19 @@ def encode(file: UploadFile = File(...)):
         tmp_path = tmp.name
     try:
         model = get_model()
-        img_tensor = prepare_image(tmp_path)
+        img_tensor, (enc_w, enc_h), orig_size = prepare_image(tmp_path)
         indices = encode_to_integers(model, img_tensor)
-        packed = transport.pack_indices(indices)
+        packed = transport.pack_latents(
+            indices, enc_w // 4, enc_h // 4, original_size=orig_size
+        )
         frames = transport.split_frames(packed, config.QR_CHUNK_SIZE)
         _current_transfer["total"] = len(frames)
         _current_transfer["received"] = set()
         return {
-            "width": config.IMAGE_SIZE,
-            "height": config.IMAGE_SIZE,
+            "width": enc_w,
+            "height": enc_h,
+            "original_width": orig_size[0],
+            "original_height": orig_size[1],
             "num_codes": int(indices.numel()),
             "total_frames": len(frames),
             "fps": config.QR_FPS,
@@ -96,14 +104,15 @@ def decode(req: DecodeRequest):
     """Reconstruct an image from compressed, bit-packed indices."""
     try:
         packed = base64.b64decode(req.data)
-        indices = transport.unpack_indices(packed)
+        meta = transport.unpack_latents(packed)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"invalid data: {e}")
 
     model = get_model()
-    idx_tensor = torch.tensor(indices, dtype=torch.long)
-    tensor = decode_from_integers(model, idx_tensor)
-    return {"image": tensor_to_png_base64(tensor)}
+    idx_tensor = torch.tensor(meta["indices"], dtype=torch.long)
+    grid_w, grid_h = meta["grid"]
+    tensor = decode_from_integers(model, idx_tensor, grid_w, grid_h)
+    return {"image": tensor_to_png_base64(tensor, size=meta["original"])}
 
 
 @app.get("/")

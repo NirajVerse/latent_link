@@ -17,6 +17,12 @@ HEADER_LEN = 17  # magic(4) + version(1) + total(2) + index(2) + len(4) + crc(4)
 
 BITS_PER_CODE = 13  # codebook has 8192 entries -> log2(8192) = 13
 
+# Payload format v2 supports rectangular grids and carries the original image
+# dimensions so the receiver can restore them after decoding.
+FMT_RECT = 2
+META_MAGIC = b"LKMD"
+META_LEN = 12  # magic(4) + orig_width(4) + orig_height(4)
+
 # Max payload bytes per QR frame. QR v40 at EC level L holds ~2953 bytes of
 # binary data; we stay comfortably under that so scans stay reliable.
 DEFAULT_CHUNK_SIZE = 2800
@@ -58,32 +64,59 @@ def _unpack_bits(data, bits, count):
     return values
 
 
-def pack_indices(indices):
+def pack_latents(indices, grid_w, grid_h, original_size=None):
     """Compress a list/tensor of codebook indices into a byte string.
 
-    Layout before zlib: [bits_per_code u8][grid_dim u16][bit-packed indices]
+    Compressed body layout: [fmt u8][bits u8][grid_w u16][grid_h u16]
+                            + bit-packed indices, zlib-deflated.
+    When `original_size` is given, the compressed body is prefixed with a
+    plaintext metadata block: META_MAGIC + orig_width u32 + orig_height u32.
     """
     if hasattr(indices, "tolist"):
         values = indices.tolist()
     else:
         values = list(indices)
 
-    n = len(values)
-    grid = int(n ** 0.5)
-    if grid * grid != n:
-        raise ValueError("index count must be a perfect square")
+    if len(values) != grid_w * grid_h:
+        raise ValueError(f"got {len(values)} indices, expected {grid_w}x{grid_h}")
 
-    body = bytes([BITS_PER_CODE]) + struct.pack(">H", grid) + _pack_bits(values, BITS_PER_CODE)
-    return zlib.compress(body, 9)
+    body = (
+        bytes([FMT_RECT, BITS_PER_CODE])
+        + struct.pack(">HH", grid_w, grid_h)
+        + _pack_bits(values, BITS_PER_CODE)
+    )
+    packed = zlib.compress(body, 9)
+    if original_size is not None:
+        header = META_MAGIC + struct.pack(">II", int(original_size[0]), int(original_size[1]))
+        return header + packed
+    return packed
 
 
-def unpack_indices(data):
-    """Decompress bytes produced by pack_indices back into a list of indices."""
+def unpack_latents(data):
+    """Decompress bytes produced by pack_latents.
+
+    Returns {"indices": [...], "grid": (w, h), "original": (w, h) or None}.
+    Also understands the legacy square-only format (first byte = bits per code).
+    """
+    original = None
+    if data[:4] == META_MAGIC:
+        orig_w, orig_h = struct.unpack(">II", data[4:META_LEN])
+        original = (orig_w, orig_h)
+        data = data[META_LEN:]
+
     body = zlib.decompress(data)
+    if body[0] == FMT_RECT:
+        bits = body[1]
+        grid_w, grid_h = struct.unpack(">HH", body[2:6])
+        values = _unpack_bits(body[6:], bits, grid_w * grid_h)
+        return {"indices": values, "grid": (grid_w, grid_h), "original": original}
+
+    # Legacy v1 layout: [bits u8][square grid u16][bit-packed indices].
+    # (bits is 13 for this codebook, so it can never collide with FMT_RECT.)
     bits = body[0]
     grid = struct.unpack(">H", body[1:3])[0]
-    count = grid * grid
-    return _unpack_bits(body[3:], bits, count)
+    values = _unpack_bits(body[3:], bits, grid * grid)
+    return {"indices": values, "grid": (grid, grid), "original": original}
 
 
 def build_frame(payload, frame_index, total_frames):
@@ -132,13 +165,25 @@ def join_frames(frame_bytes_list):
 if __name__ == "__main__":
     import random
 
-    # Round-trip the index packing.
-    grid = 16
-    indices = [random.randrange(1 << BITS_PER_CODE) for _ in range(grid * grid)]
-    packed = pack_indices(indices)
-    unpacked = unpack_indices(packed)
-    assert unpacked == indices, "index round-trip failed"
-    print(f"packed {len(indices)} indices -> {len(packed)} bytes")
+    # Round-trip the index packing (rectangular grid + original size).
+    grid_w, grid_h = 16, 12
+    indices = [random.randrange(1 << BITS_PER_CODE) for _ in range(grid_w * grid_h)]
+    packed = pack_latents(indices, grid_w, grid_h, original_size=(800, 600))
+    meta = unpack_latents(packed)
+    assert meta["indices"] == indices, "index round-trip failed"
+    assert meta["grid"] == (grid_w, grid_h), "grid round-trip failed"
+    assert meta["original"] == (800, 600), "original size round-trip failed"
+    print(f"packed {len(indices)} indices -> {len(packed)} bytes (with metadata)")
+
+    # Legacy square payloads still unpack.
+    legacy_indices = [random.randrange(1 << BITS_PER_CODE) for _ in range(64)]
+    legacy_body = (
+        bytes([BITS_PER_CODE]) + struct.pack(">H", 8) + _pack_bits(legacy_indices, BITS_PER_CODE)
+    )
+    legacy = unpack_latents(zlib.compress(legacy_body, 9))
+    assert legacy["indices"] == legacy_indices and legacy["grid"] == (8, 8)
+    assert legacy["original"] is None
+    print("legacy square format still unpacks")
 
     # Round-trip frame split/join, including out-of-order frames.
     frames = split_frames(packed)
@@ -146,5 +191,5 @@ if __name__ == "__main__":
     shuffled = frames[1:] + frames[:1]
     rejoined = join_frames(shuffled)
     assert rejoined == packed, "frame round-trip failed"
-    assert unpack_indices(rejoined) == indices, "rejoined round-trip failed"
+    assert unpack_latents(rejoined)["indices"] == indices, "rejoined round-trip failed"
     print("transport self-test passed")
