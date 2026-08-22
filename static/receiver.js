@@ -1,6 +1,5 @@
 const startBtn = document.getElementById("start");
 const errorEl = document.getElementById("error");
-const snapBtn = document.getElementById("snap");
 const progressWrap = document.getElementById("progressWrap");
 const fill = document.getElementById("fill");
 const progressEl = document.getElementById("progress");
@@ -81,6 +80,11 @@ function handleFrame(bytes) {
   if (received.has(parsed.index)) return false;
   received.set(parsed.index, parsed.payload);
   updateProgress();
+  fetch("/progress", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ index: parsed.index }),
+  });
   if (received.size === totalFrames) finish();
   return true;
 }
@@ -150,7 +154,7 @@ async function startCamera() {
   try {
     await scanner.start(
       { facingMode: "environment" },
-      { fps: 10, qrbox: { width: 260, height: 260 }, disableFlip: true },
+      { fps: 10, qrbox: { width: 320, height: 320 }, disableFlip: true },
       onDecode,
       () => {}
     );
@@ -162,26 +166,6 @@ async function startCamera() {
     errorEl.style.display = "block";
   }
 }
-
-snapBtn.addEventListener("click", () => {
-  const v = document.querySelector("#reader video");
-  if (!v || !v.videoWidth) return;
-  const c = document.createElement("canvas");
-  c.width = v.videoWidth;
-  c.height = v.videoHeight;
-  c.getContext("2d").drawImage(v, 0, 0);
-  const scale = Math.min(1, 640 / c.width);
-  const dc = document.createElement("canvas");
-  dc.width = Math.round(c.width * scale);
-  dc.height = Math.round(c.height * scale);
-  dc.getContext("2d").drawImage(c, 0, 0, dc.width, dc.height);
-  const dataUrl = dc.toDataURL("image/jpeg", 0.85);
-  fetch("/debug/snapshot", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image: dataUrl }),
-  });
-});
 
 startBtn.addEventListener("click", startCamera);
 againBtn.addEventListener("click", () => {

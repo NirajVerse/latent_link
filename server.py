@@ -32,6 +32,8 @@ STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
 _model = None
 
+_current_transfer = {"total": 0, "received": set()}
+
 
 def get_model():
     global _model
@@ -46,6 +48,10 @@ class DecodeRequest(BaseModel):
 
 class SnapshotRequest(BaseModel):
     image: str  # data URL (base64) of the captured camera frame
+
+
+class ProgressRequest(BaseModel):
+    index: int
 
 
 def tensor_to_png_base64(tensor):
@@ -71,6 +77,8 @@ def encode(file: UploadFile = File(...)):
         indices = encode_to_integers(model, img_tensor)
         packed = transport.pack_indices(indices)
         frames = transport.split_frames(packed, config.QR_CHUNK_SIZE)
+        _current_transfer["total"] = len(frames)
+        _current_transfer["received"] = set()
         return {
             "width": config.IMAGE_SIZE,
             "height": config.IMAGE_SIZE,
@@ -101,6 +109,26 @@ def decode(req: DecodeRequest):
 @app.get("/")
 def root():
     return RedirectResponse(url="/static/sender.html")
+
+
+@app.post("/progress")
+def report_progress(req: ProgressRequest):
+    """Receiver reports a frame index it has successfully captured."""
+    if 0 <= req.index < _current_transfer["total"]:
+        _current_transfer["received"].add(req.index)
+    return {
+        "total": _current_transfer["total"],
+        "received": sorted(_current_transfer["received"]),
+    }
+
+
+@app.get("/progress")
+def get_progress():
+    """Sender polls which frame indices still need to be shown."""
+    return {
+        "total": _current_transfer["total"],
+        "received": sorted(_current_transfer["received"]),
+    }
 
 
 @app.post("/debug/snapshot")

@@ -4,9 +4,12 @@ const canvas = document.getElementById("qr");
 const statusEl = document.getElementById("status");
 
 let frames = [];
+let total = 0;
 let fps = 3;
-let current = 0;
+let idx = -1;
 let timer = null;
+let poller = null;
+let receivedSet = new Set();
 
 function frameToModules(text) {
   const qr = qrcode(0, "L");
@@ -38,17 +41,55 @@ function drawFrame(i) {
       if (modules[r][c]) ctx.fillRect(margin + c * scale, margin + r * scale, scale, scale);
     }
   }
-  statusEl.textContent = "Frame " + (i + 1) + " / " + frames.length;
+}
+
+function missingCount() {
+  return total - receivedSet.size;
+}
+
+function showNextMissing() {
+  const left = missingCount();
+  if (left === 0) {
+    stopLoop();
+    statusEl.textContent = "All frames received!";
+    return;
+  }
+  let next = -1;
+  for (let step = 1; step <= total; step++) {
+    const candidate = (idx + step) % total;
+    if (!receivedSet.has(candidate)) { next = candidate; break; }
+  }
+  if (next === -1) { stopLoop(); statusEl.textContent = "All frames received!"; return; }
+  idx = next;
+  drawFrame(idx);
+  statusEl.textContent = "Frame " + (idx + 1) + " / " + total + " (" + left + " left)";
+}
+
+function stopLoop() {
+  clearInterval(timer);
+  timer = null;
+  clearInterval(poller);
+  poller = null;
+}
+
+async function pollProgress() {
+  try {
+    const res = await fetch("/progress");
+    const p = await res.json();
+    if (p.total && p.total !== total) return;
+    receivedSet = new Set(p.received || []);
+    if (receivedSet.size >= total && total > 0) {
+      stopLoop();
+      statusEl.textContent = "All frames received!";
+    }
+  } catch (e) {}
 }
 
 function startLoop() {
   clearInterval(timer);
-  current = 0;
-  drawFrame(current);
-  timer = setInterval(() => {
-    current = (current + 1) % frames.length;
-    drawFrame(current);
-  }, 1000 / fps);
+  idx = -1;
+  timer = setInterval(showNextMissing, 1000 / fps);
+  poller = setInterval(pollProgress, 700);
 }
 
 async function handleFile(file) {
@@ -62,7 +103,9 @@ async function handleFile(file) {
     return;
   }
   const data = await res.json();
-  fps = data.fps || 1;
+  fps = data.fps || 3;
+  total = data.total_frames;
+  receivedSet = new Set();
   frames = data.frames.map((b64) => frameToModules(b64));
   startLoop();
 }
