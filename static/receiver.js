@@ -1,5 +1,6 @@
 const startBtn = document.getElementById("start");
 const video = document.getElementById("preview");
+const errorEl = document.getElementById("error");
 const progressWrap = document.getElementById("progressWrap");
 const fill = document.getElementById("fill");
 const progressEl = document.getElementById("progress");
@@ -127,17 +128,29 @@ function reset() {
 }
 
 async function startCamera() {
+  errorEl.style.display = "none";
   reset();
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: "environment" },
-    audio: false,
-  });
-  video.srcObject = stream;
-  await video.play();
-  progressWrap.style.display = "flex";
-  startBtn.disabled = true;
-  scanning = true;
-  tick();
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    errorEl.textContent =
+      "Camera unavailable: this page must be opened over HTTPS (https://...). Reopen the URL with https:// and accept the certificate warning.";
+    errorEl.style.display = "block";
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment" },
+      audio: false,
+    });
+    video.srcObject = stream;
+    await video.play();
+    progressWrap.style.display = "flex";
+    startBtn.disabled = true;
+    scanning = true;
+    tick();
+  } catch (e) {
+    errorEl.textContent = "Camera error: " + e.message;
+    errorEl.style.display = "block";
+  }
 }
 
 startBtn.addEventListener("click", startCamera);
