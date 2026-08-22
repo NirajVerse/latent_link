@@ -21,9 +21,9 @@ The result is roughly **190x compression** end-to-end, with reconstructions meas
 Phone A (sender)                Laptop (backend)               Phone B (receiver)
 -----------------               ----------------               ------------------
 pick image  ────────────────►   VQ-VAE encode
-                                512x512 px ─► 128x128 grid
-                                16,384 codes x 13 bits
-                                bit-pack + zlib
+                                fit to 512 px, keep aspect
+                                (e.g. 512x384 ─► 128x96 grid)
+                                bit-pack 13-bit codes + zlib
                                 frame + CRC32 + base64
 QR sequence ◄────────────────   frame list + fps
 (cycles MISSING frames ◄───┐    )
@@ -35,13 +35,13 @@ QR sequence ◄────────────────   frame list + f
                              pixels ─► PNG                 show/save image
 ```
 
-1. **Encode** — the backend runs the image through a pre-trained VQ-VAE (`CompVis/ldm-super-resolution-4x-openimages`, `vqvae` subfolder), producing a 128x128 grid of indices into an 8192-entry codebook.
-2. **Pack** — indices are written as 13-bit values, zlib-compressed, and split into ~1000-byte chunks.
+1. **Encode** — the backend runs the image through a pre-trained VQ-VAE (`CompVis/ldm-super-resolution-4x-openimages`, `vqvae` subfolder), producing a grid of indices into an 8192-entry codebook (e.g. a landscape photo becomes a 128x96 grid). The image is scaled so its longest side is 512 px with the aspect ratio preserved, and the original dimensions travel inside the payload.
+2. **Pack** — indices are written as 13-bit values with grid dimensions and original width/height in a small header, zlib-compressed, and split into ~1000-byte chunks.
 3. **Frame** — each chunk gets a binary header: magic `LKQ1`, version, total-frame count, frame index, payload length, CRC32 checksum.
 4. **Transmit** — each framed chunk is base64-encoded into a QR code and displayed fullscreen at ~3 fps.
 5. **Receive** — the receiver scans continuously, validates each frame's CRC32, keeps unique frame indices, and relays progress to the backend.
 6. **Feedback loop** — the sender polls `/progress` every 700 ms and *only cycles frames the receiver hasn't confirmed yet*, so stragglers get retried automatically instead of restarting the whole sequence.
-7. **Reconstruct** — once all frames arrive, the receiver reassembles the payload, sends it to `/decode`, and displays the reconstructed image with a save button.
+7. **Reconstruct** — once all frames arrive, the receiver reassembles the payload, sends it to `/decode`, and displays the reconstructed image — resized back to its original dimensions — with a save button.
 
 ## Repository layout
 
@@ -94,7 +94,7 @@ Tune in `config.py`:
 
 - `QR_FPS` — sender frame rate (higher = faster transfer, harder to scan)
 - `QR_CHUNK_SIZE` — bytes per frame (larger = fewer frames, denser QRs)
-- `IMAGE_SIZE` — input resolution; latent grid is resolution / 4
+- `IMAGE_SIZE` — longest-side resolution; the latent grid is that size divided by 4, preserving aspect ratio
 
 ## Limitations & future ideas
 
