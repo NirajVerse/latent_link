@@ -1,5 +1,6 @@
 const startBtn = document.getElementById("start");
 const video = document.getElementById("preview");
+const snapBtn = document.getElementById("snap");
 const errorEl = document.getElementById("error");
 const progressWrap = document.getElementById("progressWrap");
 const fill = document.getElementById("fill");
@@ -181,6 +182,24 @@ async function startCamera() {
 }
 
 startBtn.addEventListener("click", startCamera);
+snapBtn.addEventListener("click", () => {
+  if (!video.videoWidth) return;
+  const c = document.createElement("canvas");
+  c.width = W;
+  c.height = H;
+  c.getContext("2d").drawImage(video, 0, 0, W, H);
+  const scale = Math.min(1, 640 / W);
+  const dc = document.createElement("canvas");
+  dc.width = Math.round(W * scale);
+  dc.height = Math.round(H * scale);
+  dc.getContext("2d").drawImage(c, 0, 0, dc.width, dc.height);
+  const dataUrl = dc.toDataURL("image/jpeg", 0.85);
+  fetch("/debug/snapshot", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ image: dataUrl }),
+  });
+});
 againBtn.addEventListener("click", () => {
   reset();
   scanning = true;

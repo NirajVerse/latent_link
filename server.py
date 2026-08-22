@@ -44,6 +44,10 @@ class DecodeRequest(BaseModel):
     data: str  # base64 of the compressed, bit-packed indices
 
 
+class SnapshotRequest(BaseModel):
+    image: str  # data URL (base64) of the captured camera frame
+
+
 def tensor_to_png_base64(tensor):
     """Denormalize a VQ-VAE output tensor and return it as base64 PNG."""
     tensor = (tensor / 2 + 0.5).clamp(0, 1)
@@ -97,6 +101,18 @@ def decode(req: DecodeRequest):
 @app.get("/")
 def root():
     return RedirectResponse(url="/static/sender.html")
+
+
+@app.post("/debug/snapshot")
+def snapshot(req: SnapshotRequest):
+    """Save a camera frame from the receiver for debugging."""
+    import pathlib
+
+    payload = req.image.split(",", 1)[-1]
+    data = base64.b64decode(payload)
+    path = pathlib.Path("/tmp/opencode/snapshot.jpg")
+    path.write_bytes(data)
+    return {"saved": str(path), "bytes": len(data)}
 
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
