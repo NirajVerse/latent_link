@@ -4,6 +4,7 @@ const errorEl = document.getElementById("error");
 const progressWrap = document.getElementById("progressWrap");
 const fill = document.getElementById("fill");
 const progressEl = document.getElementById("progress");
+const debugEl = document.getElementById("debug");
 const result = document.getElementById("result");
 const outImg = document.getElementById("outImg");
 const againBtn = document.getElementById("again");
@@ -20,6 +21,10 @@ const received = new Map();
 let totalFrames = null;
 let scanning = false;
 let done = false;
+let ticks = 0;
+let hits = 0;
+let stored = 0;
+let rejected = 0;
 
 const crcTable = (() => {
   const table = new Uint32Array(256);
@@ -67,15 +72,16 @@ function updateProgress() {
 
 function handleFrame(bytes) {
   const parsed = parseFrame(bytes);
-  if (!parsed) return;
+  if (!parsed) return false;
   if (totalFrames === null || parsed.total !== totalFrames) {
     received.clear();
     totalFrames = parsed.total;
   }
-  if (received.has(parsed.index)) return;
+  if (received.has(parsed.index)) return false;
   received.set(parsed.index, parsed.payload);
   updateProgress();
   if (received.size === totalFrames) finish();
+  return true;
 }
 
 async function finish() {
@@ -112,8 +118,18 @@ function tick() {
   if (video.readyState === video.HAVE_ENOUGH_DATA) {
     ctx.drawImage(video, 0, 0, W, H);
     const imageData = ctx.getImageData(0, 0, W, H);
-    const code = jsQR(imageData.data, W, H, { inversionAttempts: "dontInvert" });
-    if (code && code.binaryData) handleFrame(code.binaryData);
+    const code = jsQR(imageData.data, W, H, { inversionAttempts: "attemptBoth" });
+    ticks++;
+    if (code && code.binaryData) {
+      hits++;
+      if (handleFrame(code.binaryData)) stored++;
+      else rejected++;
+    }
+    if (ticks % 15 === 0) {
+      debugEl.textContent =
+        "res " + W + "x" + H + " | scans " + ticks +
+        " | qr hits " + hits + " | stored " + stored + " | rejected " + rejected;
+    }
   }
   requestAnimationFrame(tick);
 }
@@ -122,8 +138,13 @@ function reset() {
   received.clear();
   totalFrames = null;
   done = false;
+  ticks = 0;
+  hits = 0;
+  stored = 0;
+  rejected = 0;
   result.style.display = "none";
   progressWrap.style.display = "flex";
+  debugEl.textContent = "";
   updateProgress();
 }
 
