@@ -119,7 +119,7 @@ function tick() {
   if (video.readyState === video.HAVE_ENOUGH_DATA) {
     ctx.drawImage(video, 0, 0, W, H);
     const imageData = ctx.getImageData(0, 0, W, H);
-    const code = jsQR(imageData.data, W, H, { inversionAttempts: "attemptBoth" });
+    const code = jsQR(imageData.data, W, H, { inversionAttempts: "dontInvert" });
     ticks++;
     if (code && code.binaryData) {
       hits++;
@@ -167,7 +167,7 @@ async function startCamera() {
     await video.play();
     const vw = video.videoWidth || 1280;
     const vh = video.videoHeight || 720;
-    W = Math.min(vw, 1280);
+    W = Math.min(vw, 720);
     H = Math.round(vh * (W / vw));
     canvas.width = W;
     canvas.height = H;
