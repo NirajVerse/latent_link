@@ -150,7 +150,7 @@ async function startCamera() {
   try {
     await scanner.start(
       { facingMode: "environment" },
-      { fps: 10, disableFlip: true },
+      { fps: 10, qrbox: { width: 260, height: 260 }, disableFlip: true },
       onDecode,
       () => {}
     );
