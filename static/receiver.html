@@ -69,7 +69,7 @@
   <div class="sub">Point your camera at the sender's QR codes</div>
 
   <button id="start">Start Camera</button>
-  <video id="preview" autoplay playsinline muted></video>
+  <div id="reader" style="width:100%; max-width:480px;"></div>
   <button id="snap" style="background:#30363d;">Snapshot</button>
   <div id="error" style="display:none; color:#ff7b72; max-width:480px; text-align:center; font-size:0.9rem;"></div>
 
@@ -84,7 +84,7 @@
     <button id="again">Scan Another</button>
   </div>
 
-  <script src="/static/vendor/jsqr.js"></script>
+  <script src="/static/vendor/html5-qrcode.min.js"></script>
   <script src="/static/receiver.js"></script>
 </body>
 </html>

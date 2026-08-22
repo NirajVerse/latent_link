@@ -8,18 +8,9 @@ let fps = 3;
 let current = 0;
 let timer = null;
 
-function bytesToBinaryString(bytes) {
-  const CHUNK = 0x8000;
-  const parts = [];
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    parts.push(String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK)));
-  }
-  return parts.join("");
-}
-
-function frameToModules(bytes) {
+function frameToModules(text) {
   const qr = qrcode(0, "L");
-  qr.addData(bytesToBinaryString(bytes), "Byte");
+  qr.addData(text, "Byte");
   qr.make();
   const count = qr.getModuleCount();
   const modules = new Array(count);
@@ -71,13 +62,8 @@ async function handleFile(file) {
     return;
   }
   const data = await res.json();
-  fps = data.fps || 3;
-  frames = data.frames.map((b64) => {
-    const bin = atob(b64);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    return frameToModules(bytes);
-  });
+  fps = data.fps || 1;
+  frames = data.frames.map((b64) => frameToModules(b64));
   startLoop();
 }
 
