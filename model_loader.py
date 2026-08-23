@@ -12,7 +12,7 @@ def get_vq_model():
     print(f"Loading VQModel: {config.MODEL_ID}...")
     
     # Load the model from Hugging Face
-    model = VQModel.from_pretrained(config.MODEL_ID, subfolder=config.SUBFOLDER)
+    model = VQModel.from_pretrained(config.MODEL_ID, subfolder=config.SUBFOLDER, local_files_only = True)
     
     # Set to evaluation mode (important since we aren't training)
     model.eval()

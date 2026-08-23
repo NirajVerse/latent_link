@@ -7,6 +7,10 @@ import torchvision.transforms as T
 from PIL import Image
 import config
 from model_loader import get_vq_model
+from chafa.canvas import Canvas
+from chafa.loader import Loader
+import io
+from chafa import *
 
 def decode_from_integers(model, encoding_indices, grid_w, grid_h):
     """Reconstructs the image from integer codes on a grid_w x grid_h latent grid."""
@@ -36,6 +40,27 @@ def save_tensor_as_image(tensor, output_path):
     image = T.ToPILImage()(tensor.squeeze(0))
     image.save(output_path)
     print(f"Saved reconstructed image to {output_path}")
+
+
+    img_byte_arr = io.BytesIO()
+    image.save(img_byte_arr, format='PNG')
+    img_bytes = img_byte_arr.getvalue()
+    
+    #loader = Loader()
+    #loader.load_from_memory(img_bytes)
+    loader = Loader(output_path)
+    config = CanvasConfig()
+    config.width = 512
+    config.height = 512
+
+
+    canvas = Canvas(config)
+    #canvas.config.width = 512
+   # canvas.config.height = 512
+   # canvas.draw_all_pixels(loader) 
+
+    #print(canvas.print().decode("utf-8"))
+
 
 if __name__ == "__main__":
     # 1. Load Model
